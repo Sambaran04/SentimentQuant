@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGODB_URL=mongodb://mongodb:27017
+      - POSTGRES_SERVER=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=sentimentquant
+    depends_on:
+      - mongodb
+      - postgres
+    volumes:
+      - ./backend:/app
+    networks:
+      - sentimentquant-network
+
+  mongodb:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - sentimentquant-network
+
+  postgres:
+    image: postgres:latest
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=sentimentquant
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - sentimentquant-network
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    ports:
+      - "5000:5000"
+    command: mlflow server --host 0.0.0.0
+    volumes:
+      - mlflow_data:/mlruns
+    networks:
+      - sentimentquant-network
+
+volumes:
+  mongodb_data:
+  postgres_data:
+  mlflow_data:
+
+networks:
+  sentimentquant-network:
+    driver: bridge 

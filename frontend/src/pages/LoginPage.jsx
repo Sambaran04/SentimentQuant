@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { useNavigate, Link as RouterLink } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
-import axios from 'axios';
 import {
   Box,
   Button,
@@ -11,8 +10,7 @@ import {
   Typography,
   Paper,
   CircularProgress,
-  Link,
-  Divider,
+  Link as MuiLink,
 } from '@mui/material';
 import { Login as LoginIcon } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
@@ -26,27 +24,14 @@ const LoginPage = () => {
   const onSubmit = async (data) => {
     try {
       setIsLoading(true);
-      const response = await axios.post('/api/v1/auth/login', {
-        username: data.email,
-        password: data.password,
-      });
-      
-      await login(response.data.access_token);
-      toast.success('Successfully logged in');
+      await login(data.email, data.password);
+      toast.success('Login successful!');
       navigate('/dashboard');
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to login');
+      toast.error(error.response?.data?.detail || 'Login failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const validateEmail = (value) => {
-    if (!value) return 'Email is required';
-    if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(value)) {
-      return 'Invalid email address';
-    }
-    return true;
   };
 
   return (
@@ -81,7 +66,13 @@ const LoginPage = () => {
               label="Email Address"
               autoComplete="email"
               autoFocus
-              {...register('email', { validate: validateEmail })}
+              {...register('email', {
+                required: 'Email is required',
+                pattern: {
+                  value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
+                  message: 'Invalid email address',
+                },
+              })}
               error={!!errors.email}
               helperText={errors.email?.message}
             />
@@ -92,20 +83,16 @@ const LoginPage = () => {
               label="Password"
               type="password"
               autoComplete="current-password"
-              {...register('password', { required: 'Password is required' })}
+              {...register('password', {
+                required: 'Password is required',
+                minLength: {
+                  value: 6,
+                  message: 'Password must be at least 6 characters',
+                },
+              })}
               error={!!errors.password}
               helperText={errors.password?.message}
             />
-            <Box sx={{ textAlign: 'right', mt: 1 }}>
-              <Link
-                component={RouterLink}
-                to="/forgot-password"
-                variant="body2"
-                sx={{ textDecoration: 'none' }}
-              >
-                Forgot password?
-              </Link>
-            </Box>
             <Button
               type="submit"
               fullWidth
@@ -115,16 +102,23 @@ const LoginPage = () => {
             >
               {isLoading ? <CircularProgress size={24} /> : 'Sign In'}
             </Button>
-            <Divider sx={{ my: 2 }}>OR</Divider>
-            <Box sx={{ textAlign: 'center' }}>
-              <Link
-                component={RouterLink}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+              <MuiLink
+                component={Link}
+                to="/forgot-password"
+                variant="body2"
+                sx={{ textDecoration: 'none' }}
+              >
+                Forgot password?
+              </MuiLink>
+              <MuiLink
+                component={Link}
                 to="/register"
                 variant="body2"
                 sx={{ textDecoration: 'none' }}
               >
                 Don't have an account? Sign Up
-              </Link>
+              </MuiLink>
             </Box>
           </Box>
         </Paper>

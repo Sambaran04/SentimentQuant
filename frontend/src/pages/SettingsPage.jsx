@@ -1,146 +1,183 @@
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import { useAuth } from '../context/AuthContext';
-import { useNotification } from '../context/NotificationContext';
-import LoadingSpinner from '../components/LoadingSpinner';
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Grid,
+  Paper,
+  Typography,
+  TextField,
+  Button,
+  Switch,
+  FormControlLabel,
+  CircularProgress,
+  Card,
+  CardContent,
+  CardHeader,
+  Divider,
+  Alert,
+} from '@mui/material';
+import { useForm } from 'react-hook-form';
+import { toast } from 'react-toastify';
+import { useApi } from '../hooks/useApi';
+import { userAPI } from '../config/api';
 
-export default function SettingsPage() {
-  const { user, logout } = useAuth();
-  const { showNotification } = useNotification();
-  const [profile, setProfile] = useState(null);
-  const [email, setEmail] = useState('');
-  const [strategyConfig, setStrategyConfig] = useState('{}');
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+const SettingsPage = () => {
+  const [isLoading, setIsLoading] = useState(false);
+  const [settings, setSettings] = useState(null);
+  const { register, handleSubmit, formState: { errors }, reset } = useForm();
+
+  const { execute: fetchProfile } = useApi(userAPI.getProfile);
+  const { execute: updateProfile } = useApi(userAPI.updateProfile);
+  const { execute: updateSettings } = useApi(userAPI.updateSettings);
 
   useEffect(() => {
-    const fetchProfile = async () => {
-      setLoading(true);
+    const loadSettings = async () => {
       try {
-        const res = await axios.get('/api/v1/users/me');
-        setProfile(res.data);
-        setEmail(res.data.email || '');
-        setStrategyConfig(JSON.stringify(res.data.strategy_config || {}, null, 2));
+        const data = await fetchProfile();
+        setSettings(data.settings);
+        reset(data);
       } catch (error) {
-        showNotification('Failed to fetch profile', 'error');
-        setProfile(null);
+        console.error('Failed to load settings:', error);
       }
-      setLoading(false);
     };
-    fetchProfile();
-  }, [showNotification]);
 
-  const handleUpdate = async (e) => {
-    e.preventDefault();
-    setSubmitting(true);
+    loadSettings();
+  }, [fetchProfile, reset]);
+
+  const onSubmit = async (data) => {
     try {
-      let parsedConfig;
-      try {
-        parsedConfig = JSON.parse(strategyConfig);
-      } catch (error) {
-        showNotification('Invalid JSON in strategy config', 'error');
-        setSubmitting(false);
-        return;
-      }
-
-      const res = await axios.put('/api/v1/users/me', {
-        username: profile.username,
-        email,
-        is_active: profile.is_active,
-        is_superuser: profile.is_superuser,
-        strategy_config: parsedConfig
+      setIsLoading(true);
+      await updateProfile({
+        name: data.name,
+        email: data.email,
       });
-      showNotification('Profile updated successfully!', 'success');
+      await updateSettings({
+        notifications: data.notifications,
+        theme: data.theme,
+        language: data.language,
+      });
+      toast.success('Settings updated successfully!');
     } catch (error) {
-      showNotification('Failed to update profile', 'error');
+      toast.error(error.response?.data?.detail || 'Failed to update settings');
+    } finally {
+      setIsLoading(false);
     }
-    setSubmitting(false);
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <LoadingSpinner size="lg" />
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">Profile Settings</h2>
-        {profile ? (
-          <form onSubmit={handleUpdate} className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
-              <input
-                type="text"
-                value={profile.username}
-                disabled
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-50 text-gray-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Strategy Config (JSON)</label>
-              <textarea
-                value={strategyConfig}
-                onChange={e => setStrategyConfig(e.target.value)}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                rows="8"
-              />
-            </div>
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={submitting}
-                className={`px-6 py-2 rounded-md text-white font-medium ${
-                  submitting
-                    ? 'bg-blue-400 cursor-not-allowed'
-                    : 'bg-blue-600 hover:bg-blue-700'
-                }`}
-              >
-                {submitting ? (
-                  <div className="flex items-center">
-                    <LoadingSpinner size="sm" />
-                    <span className="ml-2">Updating...</span>
-                  </div>
-                ) : (
-                  'Update Profile'
-                )}
-              </button>
-            </div>
-          </form>
-        ) : (
-          <div className="text-center py-8 text-gray-500">
-            Failed to load profile data
-          </div>
-        )}
-      </div>
+    <Box sx={{ flexGrow: 1, p: 3 }}>
+      <Typography variant="h4" gutterBottom>
+        Settings
+      </Typography>
 
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">Telegram Integration</h2>
-        <div className="text-center py-8 text-gray-500">
-          Coming soon: Link your Telegram for trade alerts!
-        </div>
-      </div>
+      <Grid container spacing={3}>
+        {/* Profile Settings */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardHeader title="Profile Settings" />
+            <Divider />
+            <CardContent>
+              <Box component="form" onSubmit={handleSubmit(onSubmit)}>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Name"
+                      {...register('name', {
+                        required: 'Name is required',
+                      })}
+                      error={!!errors.name}
+                      helperText={errors.name?.message}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Email"
+                      type="email"
+                      {...register('email', {
+                        required: 'Email is required',
+                        pattern: {
+                          value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
+                          message: 'Invalid email address',
+                        },
+                      })}
+                      error={!!errors.email}
+                      helperText={errors.email?.message}
+                    />
+                  </Grid>
+                </Grid>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
 
-      <div className="flex justify-end">
-        <button
-          onClick={logout}
-          className="px-6 py-2 rounded-md text-white font-medium bg-red-600 hover:bg-red-700"
-        >
-          Logout
-        </button>
-      </div>
-    </div>
+        {/* Preferences */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardHeader title="Preferences" />
+            <Divider />
+            <CardContent>
+              <Box component="form" onSubmit={handleSubmit(onSubmit)}>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          {...register('notifications')}
+                          defaultChecked={settings?.notifications}
+                        />
+                      }
+                      label="Enable Notifications"
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Theme"
+                      {...register('theme')}
+                      defaultValue={settings?.theme || 'light'}
+                    >
+                      <option value="light">Light</option>
+                      <option value="dark">Dark</option>
+                      <option value="system">System</option>
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Language"
+                      {...register('language')}
+                      defaultValue={settings?.language || 'en'}
+                    >
+                      <option value="en">English</option>
+                      <option value="es">Spanish</option>
+                      <option value="fr">French</option>
+                    </TextField>
+                  </Grid>
+                </Grid>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Save Button */}
+        <Grid item xs={12}>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Button
+              variant="contained"
+              onClick={handleSubmit(onSubmit)}
+              disabled={isLoading}
+              sx={{ minWidth: 200 }}
+            >
+              {isLoading ? <CircularProgress size={24} /> : 'Save Changes'}
+            </Button>
+          </Box>
+        </Grid>
+      </Grid>
+    </Box>
   );
-} 
+};
+
+export default SettingsPage; 

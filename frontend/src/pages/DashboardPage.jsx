@@ -1,322 +1,164 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
+  Box,
   Grid,
   Paper,
   Typography,
-  Box,
   CircularProgress,
   Card,
   CardContent,
-  IconButton,
-  MenuItem,
-  Select,
-  FormControl,
-  InputLabel,
-  Tabs,
-  Tab,
+  CardHeader,
+  Divider,
 } from '@mui/material';
 import {
-  TrendingUp as TrendingUpIcon,
-  TrendingDown as TrendingDownIcon,
-  Assessment as AssessmentIcon,
-  Refresh as RefreshIcon,
-} from '@mui/icons-material';
-import axios from 'axios';
-import LineChart from '../components/charts/LineChart';
-import CandlestickChart from '../components/charts/CandlestickChart';
-import BarChart from '../components/charts/BarChart';
-import TechnicalChart from '../components/charts/TechnicalChart';
-import CorrelationMatrix from '../components/charts/CorrelationMatrix';
-import DataTable from '../components/tables/DataTable';
-import useWebSocket from '../hooks/useWebSocket';
-import SearchBar from '../components/SearchBar';
-import NewsFeed from '../components/NewsFeed';
-import Watchlist from '../components/Watchlist';
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts';
+import { useApi } from '../hooks/useApi';
+import { tradingAPI, marketAPI } from '../config/api';
 
 const DashboardPage = () => {
-  const [loading, setLoading] = useState(false);
-  const [sentimentData, setSentimentData] = useState([]);
-  const [priceData, setPriceData] = useState([]);
-  const [portfolioData, setPortfolioData] = useState([]);
-  const [error, setError] = useState(null);
-  const [selectedSymbol, setSelectedSymbol] = useState('');
-  const [timeframe, setTimeframe] = useState('1d');
-  const [volumeData, setVolumeData] = useState([]);
-  const [summaryData, setSummaryData] = useState({
-    portfolioValue: 0,
-    sentimentScore: 0,
-    activePositions: 0,
-  });
-  const [activeTab, setActiveTab] = useState(0);
+  const [portfolioData, setPortfolioData] = useState(null);
+  const [marketData, setMarketData] = useState(null);
+  const [newsData, setNewsData] = useState([]);
 
-  const symbols = ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA'];
-  const timeframes = [
-    { value: '1d', label: '1 Day' },
-    { value: '1w', label: '1 Week' },
-    { value: '1m', label: '1 Month' },
-    { value: '3m', label: '3 Months' },
-    { value: '1y', label: '1 Year' },
-  ];
-
-  const fetchData = useCallback(async () => {
-    if (!selectedSymbol) return;
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      const [priceResponse, sentimentResponse, portfolioResponse] = await Promise.all([
-        axios.get(`/api/v1/prices/${selectedSymbol}?timeframe=${timeframe}`),
-        axios.get(`/api/v1/sentiment/${selectedSymbol}?timeframe=${timeframe}`),
-        axios.get('/api/v1/portfolio'),
-      ]);
-
-      setPriceData(priceResponse.data);
-      setSentimentData(sentimentResponse.data);
-      setPortfolioData(portfolioResponse.data.positions);
-      setSummaryData({
-        portfolioValue: portfolioResponse.data.totalValue,
-        sentimentScore: sentimentResponse.data.averageScore,
-        activePositions: portfolioResponse.data.positions.length,
-      });
-
-      // Process volume data from price data
-      const volumeData = priceData.map(item => ({
-        date: item.date,
-        volume: item.volume,
-      }));
-      setVolumeData(volumeData);
-    } catch (err) {
-      setError('Failed to fetch data');
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedSymbol, timeframe]);
+  const { execute: fetchPortfolio, loading: portfolioLoading } = useApi(tradingAPI.getPortfolio);
+  const { execute: fetchMarketData, loading: marketLoading } = useApi(marketAPI.getStockData);
+  const { execute: fetchNews, loading: newsLoading } = useApi(marketAPI.getNews);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  // WebSocket connection for real-time updates
-  const { lastMessage } = useWebSocket('trading', selectedSymbol);
-
-  useEffect(() => {
-    if (lastMessage) {
-      const data = JSON.parse(lastMessage.data);
-      if (data.type === 'price') {
-        setPriceData(prev => [...prev, data.price]);
-      } else if (data.type === 'sentiment') {
-        setSentimentData(prev => [...prev, data.sentiment]);
+    const loadDashboardData = async () => {
+      try {
+        const [portfolio, market, news] = await Promise.all([
+          fetchPortfolio(),
+          fetchMarketData('AAPL'), // Example: Fetching Apple stock data
+          fetchNews(),
+        ]);
+        setPortfolioData(portfolio);
+        setMarketData(market);
+        setNewsData(news);
+      } catch (error) {
+        console.error('Failed to load dashboard data:', error);
       }
-    }
-  }, [lastMessage]);
+    };
 
-  const handleSymbolChange = (symbol) => {
-    setSelectedSymbol(symbol);
-  };
+    loadDashboardData();
+  }, [fetchPortfolio, fetchMarketData, fetchNews]);
 
-  const handleTimeframeChange = (event) => {
-    setTimeframe(event.target.value);
-  };
-
-  const handleTabChange = (event, newValue) => {
-    setActiveTab(newValue);
-  };
-
-  const portfolioColumns = [
-    { id: 'symbol', label: 'Symbol', sortable: true },
-    { id: 'quantity', label: 'Quantity', sortable: true },
-    { id: 'avgPrice', label: 'Avg. Price', sortable: true },
-    { id: 'currentPrice', label: 'Current Price', sortable: true },
-    {
-      id: 'pl',
-      label: 'P/L',
-      sortable: true,
-      render: (row) => (
-        <Typography
-          color={row.pl >= 0 ? 'success.main' : 'error.main'}
-          sx={{ display: 'flex', alignItems: 'center' }}
-        >
-          {row.pl >= 0 ? '+' : ''}{row.pl}%
-        </Typography>
-      ),
-    },
-  ];
-
-  if (loading && !selectedSymbol) {
+  if (portfolioLoading || marketLoading || newsLoading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
         <CircularProgress />
       </Box>
     );
   }
 
-  if (error) {
-    return (
-      <Box sx={{ p: 2 }}>
-        <Typography color="error">{error}</Typography>
-      </Box>
-    );
-  }
-
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ flexGrow: 1, p: 3 }}>
+      <Typography variant="h4" gutterBottom>
+        Dashboard
+      </Typography>
       <Grid container spacing={3}>
-        {/* Search and Controls */}
+        {/* Portfolio Overview */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardHeader title="Portfolio Overview" />
+            <Divider />
+            <CardContent>
+              {portfolioData ? (
+                <Box>
+                  <Typography variant="h6" gutterBottom>
+                    Total Value: ${portfolioData.total_value.toLocaleString()}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Daily Change: {portfolioData.daily_change > 0 ? '+' : ''}
+                    {portfolioData.daily_change}%
+                  </Typography>
+                </Box>
+              ) : (
+                <Typography>No portfolio data available</Typography>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Market Overview */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardHeader title="Market Overview" />
+            <Divider />
+            <CardContent>
+              {marketData ? (
+                <Box>
+                  <Typography variant="h6" gutterBottom>
+                    {marketData.symbol}: ${marketData.price}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Change: {marketData.change > 0 ? '+' : ''}
+                    {marketData.change}%
+                  </Typography>
+                </Box>
+              ) : (
+                <Typography>No market data available</Typography>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Price Chart */}
         <Grid item xs={12}>
-          <Paper sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{ flexGrow: 1 }}>
-              <SearchBar onSymbolSelect={handleSymbolChange} />
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" gutterBottom>
+              Price Chart
+            </Typography>
+            <Box sx={{ height: 400 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={marketData?.historical_data || []}
+                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip />
+                  <Line
+                    type="monotone"
+                    dataKey="price"
+                    stroke="#8884d8"
+                    activeDot={{ r: 8 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
             </Box>
-            <FormControl sx={{ minWidth: 120 }}>
-              <InputLabel>Timeframe</InputLabel>
-              <Select
-                value={timeframe}
-                label="Timeframe"
-                onChange={handleTimeframeChange}
-              >
-                {timeframes.map((tf) => (
-                  <MenuItem key={tf.value} value={tf.value}>
-                    {tf.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <IconButton onClick={fetchData} disabled={loading}>
-              <RefreshIcon />
-            </IconButton>
           </Paper>
         </Grid>
 
-        {/* Watchlist */}
-        <Grid item xs={12} md={3}>
-          <Watchlist onSymbolSelect={handleSymbolChange} />
-        </Grid>
-
-        {/* Summary Cards */}
-        <Grid item xs={12} md={9}>
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={4}>
-              <Card>
-                <CardContent>
-                  <Typography color="text.secondary" gutterBottom>
-                    Portfolio Value
-                  </Typography>
-                  <Typography variant="h4">
-                    ${summaryData.portfolioValue.toLocaleString()}
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <Card>
-                <CardContent>
-                  <Typography color="text.secondary" gutterBottom>
-                    Sentiment Score
-                  </Typography>
-                  <Typography variant="h4">
-                    {summaryData.sentimentScore.toFixed(2)}
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <Card>
-                <CardContent>
-                  <Typography color="text.secondary" gutterBottom>
-                    Active Positions
-                  </Typography>
-                  <Typography variant="h4">
-                    {summaryData.activePositions}
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-        </Grid>
-
-        {/* Charts and Analysis */}
-        {selectedSymbol && (
-          <>
-            <Grid item xs={12}>
-              <Paper sx={{ p: 2 }}>
-                <Tabs value={activeTab} onChange={handleTabChange}>
-                  <Tab label="Technical Analysis" />
-                  <Tab label="Price History" />
-                  <Tab label="Volume" />
-                  <Tab label="Sentiment" />
-                </Tabs>
-                <Box sx={{ mt: 2 }}>
-                  {activeTab === 0 && (
-                    <TechnicalChart
-                      data={priceData}
-                      title={`${selectedSymbol} Technical Analysis`}
-                      height={400}
-                    />
-                  )}
-                  {activeTab === 1 && (
-                    <CandlestickChart
-                      data={priceData}
-                      title={`${selectedSymbol} Price History`}
-                      height={400}
-                    />
-                  )}
-                  {activeTab === 2 && (
-                    <BarChart
-                      data={volumeData}
-                      title="Volume"
-                      xAxisKey="date"
-                      yAxisKey="volume"
-                      height={400}
-                    />
-                  )}
-                  {activeTab === 3 && (
-                    <LineChart
-                      data={sentimentData}
-                      title="Sentiment Trend"
-                      xAxisKey="date"
-                      yAxisKey="score"
-                      height={400}
-                    />
-                  )}
-                </Box>
-              </Paper>
-            </Grid>
-
-            {/* Correlation Matrix */}
-            <Grid item xs={12}>
-              <CorrelationMatrix
-                symbols={[selectedSymbol, ...portfolioData.map(p => p.symbol)]}
-                timeframe={timeframe}
-              />
-            </Grid>
-
-            {/* News Feed */}
-            <Grid item xs={12}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Latest News
-                  </Typography>
-                  <NewsFeed symbol={selectedSymbol} />
-                </CardContent>
-              </Card>
-            </Grid>
-          </>
-        )}
-
-        {/* Portfolio Table */}
+        {/* Latest News */}
         <Grid item xs={12}>
           <Card>
+            <CardHeader title="Latest News" />
+            <Divider />
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Portfolio Positions
-              </Typography>
-              <DataTable
-                columns={portfolioColumns}
-                data={portfolioData}
-                defaultSortBy="symbol"
-              />
+              {newsData.length > 0 ? (
+                newsData.map((news, index) => (
+                  <Box key={index} sx={{ mb: 2 }}>
+                    <Typography variant="subtitle1">{news.title}</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {news.summary}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {new Date(news.published_at).toLocaleDateString()}
+                    </Typography>
+                  </Box>
+                ))
+              ) : (
+                <Typography>No news available</Typography>
+              )}
             </CardContent>
           </Card>
         </Grid>

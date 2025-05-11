@@ -35,13 +35,21 @@ export default defineConfig({
       },
     },
     rollupOptions: {
+      external: ['react-hook-form'],
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom', 'react-router-dom'],
           charts: ['chart.js', 'react-chartjs-2', 'recharts'],
           ui: ['@headlessui/react', '@heroicons/react', '@mui/material'],
+          forms: ['react-hook-form', 'yup'],
+        },
+        globals: {
+          'react-hook-form': 'ReactHookForm',
         },
       },
     },
+  },
+  optimizeDeps: {
+    include: ['react-hook-form', 'yup'],
   },
 }); 

@@ -1,10 +1,11 @@
 import { useState, useCallback } from 'react';
-import { toast } from 'react-toastify';
+import { useNotification } from '../contexts/NotificationContext';
 
-export const useApi = (apiFunction) => {
+const useApi = (apiFunction) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const { showError } = useNotification();
 
   const execute = useCallback(
     async (...args) => {
@@ -17,13 +18,13 @@ export const useApi = (apiFunction) => {
       } catch (err) {
         const errorMessage = err.response?.data?.message || 'An error occurred';
         setError(errorMessage);
-        toast.error(errorMessage);
+        showError(errorMessage);
         throw err;
       } finally {
         setLoading(false);
       }
     },
-    [apiFunction]
+    [apiFunction, showError]
   );
 
   return {
@@ -32,4 +33,6 @@ export const useApi = (apiFunction) => {
     error,
     execute,
   };
-}; 
+};
+
+export default useApi; 

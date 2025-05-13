@@ -1,10 +1,12 @@
 from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.base import BaseHTTPMiddleware
-from typing import Callable, Dict, List
-import time
+from typing import Dict, List
 from app.core.config import settings
+from app.core.redis_manager import redis_manager
 import re
+import time
+import json
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.types import ASGIApp
 
@@ -26,7 +28,6 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         self.allowed_hosts = allowed_hosts or ["*"]
         self.allowed_methods = allowed_methods or ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
         self.allowed_headers = allowed_headers or ["*"]
-        self.rate_limit_store: Dict[str, List[float]] = {}
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
         # Check request size
@@ -54,28 +55,66 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 content={"detail": "Method not allowed"}
             )
 
-        # Rate limiting
+        # Rate limiting using Redis
         client_ip = request.client.host
         current_time = time.time()
+        redis_key = f"rate_limit:{client_ip}"
         
-        if client_ip not in self.rate_limit_store:
-            self.rate_limit_store[client_ip] = []
-        
-        # Remove old timestamps
-        self.rate_limit_store[client_ip] = [
-            ts for ts in self.rate_limit_store[client_ip]
-            if current_time - ts < self.rate_limit_window
-        ]
-        
-        # Check rate limit
-        if len(self.rate_limit_store[client_ip]) >= self.rate_limit:
-            return JSONResponse(
-                status_code=429,
-                content={"detail": "Too many requests"}
+        # Use Redis Sliding Window Counter algorithm
+        # Get the current window data
+        window_data = redis_manager.cache_get(redis_key)
+        if window_data:
+            try:
+                window = json.loads(window_data)
+                window_start = window.get("start", 0)
+                request_count = window.get("count", 0)
+                
+                # Check if we need to reset the window
+                if current_time - window_start >= self.rate_limit_window:
+                    # Start a new window
+                    window = {
+                        "start": current_time,
+                        "count": 1
+                    }
+                else:
+                    # Increment counter in existing window
+                    window["count"] = request_count + 1
+                
+                # Check if rate limit exceeded
+                if window["count"] > self.rate_limit:
+                    return JSONResponse(
+                        status_code=429,
+                        content={"detail": "Too many requests"}
+                    )
+                
+                # Update window in Redis
+                redis_manager.cache_set(
+                    redis_key, 
+                    json.dumps(window), 
+                    expire=self.rate_limit_window * 2  # 2x window time to account for overlapping windows
+                )
+            except (json.JSONDecodeError, TypeError):
+                # If data is corrupted, create a new window
+                window = {
+                    "start": current_time,
+                    "count": 1
+                }
+                redis_manager.cache_set(
+                    redis_key, 
+                    json.dumps(window), 
+                    expire=self.rate_limit_window * 2
+                )
+        else:
+            # First request from this IP
+            window = {
+                "start": current_time,
+                "count": 1
+            }
+            redis_manager.cache_set(
+                redis_key, 
+                json.dumps(window), 
+                expire=self.rate_limit_window * 2
             )
-        
-        # Add current timestamp
-        self.rate_limit_store[client_ip].append(current_time)
 
         # Add security headers
         response = await call_next(request)

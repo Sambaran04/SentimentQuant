@@ -8,7 +8,7 @@ import tweepy
 import asyncpraw
 from app.core.config import settings
 from app.db.mongodb import get_database
-from app.services.sentiment import sentiment_analyzer
+from app.services.sentiment_analysis import sentiment_analyzer
 
 logger = logging.getLogger(__name__)
 
